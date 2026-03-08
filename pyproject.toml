@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "optiml"
+version = "0.1.0"
+description = "Train neural networks via global mathematical optimisation (MINLP) instead of gradient descent."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Krzysztof"},
+]
+
+dependencies = [
+    "numpy",
+    "pyomo",
+]
+
+[project.optional-dependencies]
+pytorch = ["torch"]
+all = ["torch"]
+dev = ["torch", "scikit-learn", "pytest"]
+
+[tool.setuptools.packages.find]
+include = ["optiml*"]

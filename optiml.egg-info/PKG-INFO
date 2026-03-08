@@ -1,0 +1,86 @@
+Metadata-Version: 2.4
+Name: optiml
+Version: 0.1.0
+Summary: Train neural networks via global mathematical optimisation (MINLP) instead of gradient descent.
+Author: Krzysztof
+License: MIT
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: pyomo
+Provides-Extra: pytorch
+Requires-Dist: torch; extra == "pytorch"
+Provides-Extra: all
+Requires-Dist: torch; extra == "all"
+Provides-Extra: dev
+Requires-Dist: torch; extra == "dev"
+Requires-Dist: scikit-learn; extra == "dev"
+Requires-Dist: pytest; extra == "dev"
+
+# OptiML
+
+Train neural networks via **global mathematical optimisation** (MINLP) instead of gradient descent.
+
+OptiML translates a neural network architecture into a system of constraints and decision variables,
+then uses a MINLP solver (e.g. Couenne, SCIP) to find the weights that *provably* minimise the
+training loss. After solving, the model can be exported to PyTorch for inference.
+
+## Installation
+
+```bash
+pip install -e .            # core (numpy + pyomo)
+pip install -e ".[pytorch]" # with PyTorch export support
+pip install -e ".[all]"     # everything
+```
+
+You also need a MINLP solver accessible to Pyomo, for example
+[Couenne](https://github.com/coin-or/Couenne) or [SCIP](https://www.scipopt.org/).
+
+## Quick start
+
+```python
+import optiml
+from optiml.losses import MSELoss
+
+model = optiml.Sequential(
+    optiml.Conv2D(1, 1, 3),
+    optiml.ReLU(M=20),
+    optiml.AvgPool2D(2),
+    optiml.Flatten(),
+    optiml.Linear(9, 1),
+)
+
+model.fit(X_train, y_train, loss=MSELoss(reduction='sum'), solver='couenne')
+
+pytorch_model = model.export('pytorch')
+```
+
+## Available layers
+
+| Layer | Description |
+|-------|-------------|
+| `Linear(in, out)` | Fully-connected layer |
+| `Conv1D(in_ch, out_ch, kernel)` | 1-D convolution |
+| `Conv2D(in_ch, out_ch, kernel)` | 2-D convolution |
+| `ReLU(M)` | ReLU via big-M formulation |
+| `AvgPool2D(kernel)` | 2-D average pooling |
+| `Flatten()` | Flatten spatial dimensions |
+
+## Available losses
+
+| Loss | Description |
+|------|-------------|
+| `MSELoss(reduction)` | Mean / sum of squared errors |
+| `SSELoss()` | Sum of squared errors |
+| `MAELoss(reduction)` | Mean / sum of absolute errors |
+| `HuberLoss(delta)` | Smooth L1 loss |
+
+## Export
+
+After fitting, call `model.export('pytorch')` to get a `torch.nn.Sequential`
+with the optimal weights loaded.
+
+## Example
+
+See `examples/binary_classification.py` for a full working example
+comparing OptiML (Couenne) with PyTorch (Adam) on the digits dataset.

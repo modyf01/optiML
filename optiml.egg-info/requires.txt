@@ -1,0 +1,13 @@
+numpy
+pyomo
+
+[all]
+torch
+
+[dev]
+torch
+scikit-learn
+pytest
+
+[pytorch]
+torch

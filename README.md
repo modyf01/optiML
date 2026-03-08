@@ -1,0 +1,73 @@
+# OptiML
+
+Train neural networks via **global mathematical optimisation** (MINLP) instead of gradient descent.
+
+OptiML translates a neural network architecture into a system of constraints and decision variables,
+then uses a MINLP solver (e.g. Couenne, SCIP) to find the weights that *provably* minimise the
+training loss. After solving, the model can be exported to PyTorch for inference.
+
+## Installation
+
+```bash
+pip install -e .            # core (numpy + pyomo)
+pip install -e ".[pytorch]" # with PyTorch export support
+pip install -e ".[all]"     # everything
+```
+
+You also need a MINLP solver accessible to Pyomo, for example
+[Couenne](https://github.com/coin-or/Couenne) or [SCIP](https://www.scipopt.org/).
+
+## Quick start
+
+```python
+import optiml
+from optiml.losses import MSELoss
+
+# Ultra-small Edge AI classifier — only 9 parameters
+model = optiml.Sequential(
+    optiml.Linear(2, 2),
+    optiml.ReLU(M=10),
+    optiml.Linear(2, 1),
+)
+
+model.fit(X_train, y_train, loss=MSELoss(reduction='sum'), solver='couenne')
+
+# Export to PyTorch for inference / deployment
+pytorch_model = model.export('pytorch')
+```
+
+## Available layers
+
+| Layer | Description |
+|-------|-------------|
+| `Linear(in, out)` | Fully-connected layer |
+| `Conv1D(in_ch, out_ch, kernel)` | 1-D convolution |
+| `Conv2D(in_ch, out_ch, kernel)` | 2-D convolution |
+| `ReLU(M)` | ReLU via big-M formulation |
+| `AvgPool2D(kernel)` | 2-D average pooling |
+| `Flatten()` | Flatten spatial dimensions |
+
+## Available losses
+
+| Loss | Description |
+|------|-------------|
+| `MSELoss(reduction)` | Mean / sum of squared errors |
+| `SSELoss()` | Sum of squared errors |
+| `MAELoss(reduction)` | Mean / sum of absolute errors |
+| `HuberLoss(delta)` | Smooth L1 loss |
+
+## Export
+
+After fitting, call `model.export('pytorch')` to get a `torch.nn.Sequential`
+with the optimal weights loaded.
+
+## Example
+
+See `examples/binary_classification.py` for a full working example.
+It trains a 9-parameter Iris flower classifier (versicolor vs virginica
+from petal measurements) and compares OptiML with PyTorch + Adam:
+
+- **OptiML** finds the mathematically optimal weights in **~7 s**,
+  achieving **93.3 % test accuracy** on 90 unseen samples.
+- **PyTorch Adam** has a **30 % failure rate** (stuck at 50 % accuracy)
+  and even the best restart (selected by training loss) only reaches 91.1 %.
