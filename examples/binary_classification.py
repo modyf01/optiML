@@ -20,9 +20,9 @@ import torch.optim as optim
 from sklearn.datasets import load_iris
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
+from optiml.losses import MulitClassHingeLoss
 
 import optiml
-from optiml.losses import MSELoss
 
 SEED = 42
 TRAIN_SIZE = 0.7
@@ -143,7 +143,7 @@ def main():
     t0 = time.time()
     model.fit(
         X_train, y_train_oh,
-        loss=MSELoss(reduction='sum'),
+        loss=MulitClassHingeLoss(reduction='sum'),
         solver='couenne',
         weight_bounds=WEIGHT_BOUNDS,
         tee=False,

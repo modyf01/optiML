@@ -40,6 +40,35 @@ class MSELoss(Loss):
         return total
 
 
+class MulitClassHingeLoss(Loss):
+
+    def __init__(self, reduction='mean', M: int = 1000):
+        self.reduction = reduction
+        from optiml import ReLU
+        self.relu = ReLU(M=M)
+
+    def compute(self, predictions: list["SolverVariable"], targets: np.ndarray, solver_model=None):
+        # predictions - list of n SolverVariable
+        # targets - n x classes
+        if solver_model is None:
+            raise ValueError("MAELoss requires a solver_model to create auxiliary variables")
+
+        total = 0
+        for pred, target in zip(predictions, targets):
+            idx = np.argmax(target)
+            real_pred = pred[idx]
+
+            for i in range(pred.shape[0]):
+                if i == idx:
+                    continue
+
+                total += self.relu(1 - pred[i] + real_pred, solver_model)
+
+        if self.reduction == 'mean':
+            return total / len(predictions)
+        return total
+
+
 class SSELoss(Loss):
     """Sum of Squared Errors: sum((y_pred - y_true)^2).
 
