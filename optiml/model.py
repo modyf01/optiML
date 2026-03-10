@@ -132,6 +132,9 @@ class Sequential(OptiModule):
             if verbose:
                 print(f"[OptiML] Added L2 regularisation (λ={weight_decay})")
 
+        if isinstance(objective_expr, SolverVariable):
+            if objective_expr.data.size == 1:
+                objective_expr = objective_expr.data.item()
         sm.set_objective(objective_expr, minimize=True)
 
         if verbose:
