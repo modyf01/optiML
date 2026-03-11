@@ -132,7 +132,7 @@ def main():
     print(f"\n  Total GD time: {gd_time:.1f}s")
 
     # ── Round 2: OptiML (global optimum) ──────────────────────────────
-    print(f"\n[Round 2] OptiML — MINLP global optimisation (Couenne)\n")
+    print(f"\n[Round 2] OptiML — MINLP global optimisation (gurobi)\n")
 
     model = optiml.Sequential(
         optiml.Linear(4, 3),
@@ -144,7 +144,7 @@ def main():
     model.fit(
         X_train, y_train_oh,
         loss=MulitClassHingeLoss(reduction='sum'),
-        solver='couenne',
+        solver='gurobi',
         weight_bounds=WEIGHT_BOUNDS,
         tee=False,
     )
