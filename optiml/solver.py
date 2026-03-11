@@ -6,6 +6,8 @@ import pyomo.environ as pyo
 
 # Zmienne środowiskowe licencji Gurobi WLS (Web License Service)
 _GRB_WLS_ENV_KEYS = ('GRB_WLSACCESSID', 'GRB_WLSSECRET', 'GRB_LICENSEID')
+# Nazwy parametrów w API Gurobi (Env) dla WLS
+_GRB_WLS_PARAM_NAMES = ('WLSAccessID', 'WLSSecret', 'LicenseID')
 
 
 def is_gurobi_wls_configured():
@@ -14,8 +16,9 @@ def is_gurobi_wls_configured():
     Gdy wszystkie trzy zmienne są ustawione (GRB_WLSACCESSID, GRB_WLSSECRET, GRB_LICENSEID),
     biblioteka może użyć solvera Gurobi zamiast domyślnego (np. Couenne).
     Zalecane: ustaw GRB_* na początku skryptu, przed ``import optiml``.
-    Przy wywołaniu solve() z Gurobi i wykrytym WLS biblioteka wywołuje
-    ``gurobipy.disposeDefaultEnv()``, aby nowe środowisko odczytało zmienne WLS.
+    Przy solve() z Gurobi i wykrytym WLS biblioteka używa Pyomo
+    ``solver_io='python', manage_env=True`` z jawnie przekazanymi parametrami
+    WLS do środowiska Gurobi (bez polegania na domyślnej licencji z limitem).
 
     Returns
     -------
@@ -26,6 +29,15 @@ def is_gurobi_wls_configured():
         os.environ.get(key) and str(os.environ.get(key)).strip()
         for key in _GRB_WLS_ENV_KEYS
     )
+
+
+def _gurobi_wls_env_options():
+    """Słownik opcji środowiska Gurobi WLS z os.environ (do manage_env=True)."""
+    return {
+        param: os.environ.get(env_key, '').strip()
+        for param, env_key in zip(_GRB_WLS_PARAM_NAMES, _GRB_WLS_ENV_KEYS)
+        if os.environ.get(env_key)
+    }
 
 
 class SolverVariable:
@@ -138,27 +150,53 @@ class SolverModel:
     def solve(self, solver_name='couenne', tee=True, time_limit=None,
               node_limit=None):
         solver_lower = (solver_name or '').lower()
-        # Gdy użytkownik ma WLS: zrzuć domyślne środowisko Gurobi, żeby przy
-        # następnym użyciu powstało nowe i odczytało GRB_* z os.environ
-        # (w przeciwnym razie może być używana wcześniej utworzona licenza z limitem).
-        if 'gurobi' in solver_lower and is_gurobi_wls_configured():
-            try:
-                import gurobipy as _gp
-                if hasattr(_gp, 'disposeDefaultEnv'):
-                    _gp.disposeDefaultEnv()
-            except Exception:
-                pass
+        use_gurobi = 'gurobi' in solver_lower
+        wls_configured = use_gurobi and is_gurobi_wls_configured()
 
-        solver = pyo.SolverFactory(solver_name)
-        if 'gurobi' in solver_lower:
+        if use_gurobi:
+            # Z licencją WLS: użyj interfejsu Pythona z manage_env=True i jawnie
+            # przekaż parametry WLS do środowiska — wtedy Gurobi nie używa
+            # domyślnej licencji z limitem rozmiaru (np. w Colab / Jupyter).
+            if wls_configured:
+                wls_opts = _gurobi_wls_env_options()
+                try:
+                    solver = pyo.SolverFactory(
+                        'gurobi',
+                        solver_io='python',
+                        manage_env=True,
+                        options=wls_opts,
+                    )
+                    if time_limit is not None:
+                        solver.options['TimeLimit'] = time_limit
+                    if node_limit is not None:
+                        solver.options['NodeLimit'] = node_limit
+                    results = solver.solve(self.model, tee=tee)
+                    try:
+                        solver.close()
+                    except Exception:
+                        pass
+                    return results
+                except Exception:
+                    # Starsze Pyomo lub brak gurobi_direct — fallback: zrzuć
+                    # domyślne środowisko i użyj standardowego wywołania.
+                    try:
+                        import gurobipy as _gp
+                        if hasattr(_gp, 'disposeDefaultEnv'):
+                            _gp.disposeDefaultEnv()
+                    except Exception:
+                        pass
+
+            solver = pyo.SolverFactory(solver_name)
             if time_limit is not None:
                 solver.options['TimeLimit'] = time_limit
             if node_limit is not None:
                 solver.options['NodeLimit'] = node_limit
         else:
+            solver = pyo.SolverFactory(solver_name)
             if time_limit is not None:
                 solver.options['bonmin.time_limit'] = time_limit
             if node_limit is not None:
                 solver.options['bonmin.node_limit'] = node_limit
+
         results = solver.solve(self.model, tee=tee)
         return results
