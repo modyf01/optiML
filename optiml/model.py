@@ -5,7 +5,7 @@ from collections import OrderedDict
 import numpy as np
 import pyomo.environ as pyo
 
-from .solver import SolverModel, SolverVariable
+from .solver import SolverModel, SolverVariable, is_gurobi_wls_configured
 from .layers import OptiModule
 from .losses import Loss, MSELoss
 
@@ -23,7 +23,7 @@ class Sequential(OptiModule):
             optiml.Linear(2, 1),
         )
 
-        model.fit(X_train, y_train, solver='couenne')
+        model.fit(X_train, y_train)  # solver wybierany automatycznie (gurobi jeśli WLS ustawione)
         pytorch_model = model.export('pytorch')
     """
 
@@ -49,7 +49,7 @@ class Sequential(OptiModule):
         X,
         y,
         loss=None,
-        solver='couenne',
+        solver=None,
         weight_decay=0.0,
         weight_bounds=None,
         time_limit=None,
@@ -67,8 +67,10 @@ class Sequential(OptiModule):
             Training targets.
         loss : Loss, optional
             Loss function to minimise. Defaults to ``MSELoss(reduction='sum')``.
-        solver : str
-            Name of a Pyomo-compatible MINLP solver (e.g. ``'couenne'``, ``'scip'``).
+        solver : str, optional
+            Name of a Pyomo-compatible MINLP solver (e.g. ``'couenne'``, ``'gurobi'``, ``'scip'``).
+            If None, uses ``'gurobi'`` when Gurobi WLS is configured (env: GRB_WLSACCESSID,
+            GRB_WLSSECRET, GRB_LICENSEID), otherwise ``'couenne'``.
         weight_decay : float
             L2 regularisation coefficient.  Adds ``weight_decay * sum(w²)``
             to the objective.  Prevents over-fitting and encourages small
@@ -92,6 +94,9 @@ class Sequential(OptiModule):
         """
         if loss is None:
             loss = MSELoss(reduction='sum')
+
+        if solver is None:
+            solver = 'gurobi' if is_gurobi_wls_configured() else 'couenne'
 
         X = np.asarray(X)
         y = np.asarray(y)

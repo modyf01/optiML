@@ -1,6 +1,28 @@
-import pyomo.environ as pyo
-import numpy as np
+import os
 import operator
+
+import numpy as np
+import pyomo.environ as pyo
+
+# Zmienne środowiskowe licencji Gurobi WLS (Web License Service)
+_GRB_WLS_ENV_KEYS = ('GRB_WLSACCESSID', 'GRB_WLSSECRET', 'GRB_LICENSEID')
+
+
+def is_gurobi_wls_configured():
+    """Sprawdza, czy użytkownik ma ustawioną licencję Gurobi WLS w zmiennych środowiskowych.
+
+    Gdy wszystkie trzy zmienne są ustawione (GRB_WLSACCESSID, GRB_WLSSECRET, GRB_LICENSEID),
+    biblioteka może użyć solvera Gurobi zamiast domyślnego (np. Couenne).
+
+    Returns
+    -------
+    bool
+        True, jeśli wszystkie wymagane zmienne WLS są ustawione.
+    """
+    return all(
+        os.environ.get(key) and str(os.environ.get(key)).strip()
+        for key in _GRB_WLS_ENV_KEYS
+    )
 
 
 class SolverVariable:
@@ -113,9 +135,16 @@ class SolverModel:
     def solve(self, solver_name='couenne', tee=True, time_limit=None,
               node_limit=None):
         solver = pyo.SolverFactory(solver_name)
-        if time_limit is not None:
-            solver.options['bonmin.time_limit'] = time_limit
-        if node_limit is not None:
-            solver.options['bonmin.node_limit'] = node_limit
+        solver_lower = (solver_name or '').lower()
+        if 'gurobi' in solver_lower:
+            if time_limit is not None:
+                solver.options['TimeLimit'] = time_limit
+            if node_limit is not None:
+                solver.options['NodeLimit'] = node_limit
+        else:
+            if time_limit is not None:
+                solver.options['bonmin.time_limit'] = time_limit
+            if node_limit is not None:
+                solver.options['bonmin.node_limit'] = node_limit
         results = solver.solve(self.model, tee=tee)
         return results

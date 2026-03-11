@@ -12,7 +12,7 @@ from .layers import (
     Flatten,
 )
 from .model import Sequential
-from .solver import SolverVariable, SolverModel
+from .solver import SolverVariable, SolverModel, is_gurobi_wls_configured
 from . import losses
 
 __all__ = [
@@ -26,5 +26,6 @@ __all__ = [
     "Flatten",
     "SolverVariable",
     "SolverModel",
+    "is_gurobi_wls_configured",
     "losses",
 ]
