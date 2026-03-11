@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "globoptiml"
-version = "1.0.5"
+version = "1.0.6"
 description = "Train neural networks via global mathematical optimisation (MINLP) instead of gradient descent."
 readme = "README.md"
 license = {text = "MIT"}
