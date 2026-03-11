@@ -13,6 +13,9 @@ def is_gurobi_wls_configured():
 
     Gdy wszystkie trzy zmienne są ustawione (GRB_WLSACCESSID, GRB_WLSSECRET, GRB_LICENSEID),
     biblioteka może użyć solvera Gurobi zamiast domyślnego (np. Couenne).
+    Zalecane: ustaw GRB_* na początku skryptu, przed ``import optiml``.
+    Przy wywołaniu solve() z Gurobi i wykrytym WLS biblioteka wywołuje
+    ``gurobipy.disposeDefaultEnv()``, aby nowe środowisko odczytało zmienne WLS.
 
     Returns
     -------
@@ -134,8 +137,19 @@ class SolverModel:
 
     def solve(self, solver_name='couenne', tee=True, time_limit=None,
               node_limit=None):
-        solver = pyo.SolverFactory(solver_name)
         solver_lower = (solver_name or '').lower()
+        # Gdy użytkownik ma WLS: zrzuć domyślne środowisko Gurobi, żeby przy
+        # następnym użyciu powstało nowe i odczytało GRB_* z os.environ
+        # (w przeciwnym razie może być używana wcześniej utworzona licenza z limitem).
+        if 'gurobi' in solver_lower and is_gurobi_wls_configured():
+            try:
+                import gurobipy as _gp
+                if hasattr(_gp, 'disposeDefaultEnv'):
+                    _gp.disposeDefaultEnv()
+            except Exception:
+                pass
+
+        solver = pyo.SolverFactory(solver_name)
         if 'gurobi' in solver_lower:
             if time_limit is not None:
                 solver.options['TimeLimit'] = time_limit
