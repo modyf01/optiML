@@ -166,6 +166,7 @@ class SolverModel:
                         manage_env=True,
                         options=wls_opts,
                     )
+                    solver.options['NonConvex'] = 2
                     if time_limit is not None:
                         solver.options['TimeLimit'] = time_limit
                     if node_limit is not None:
@@ -187,6 +188,7 @@ class SolverModel:
                         pass
 
             solver = pyo.SolverFactory(solver_name)
+            solver.options['NonConvex'] = 2
             if time_limit is not None:
                 solver.options['TimeLimit'] = time_limit
             if node_limit is not None:

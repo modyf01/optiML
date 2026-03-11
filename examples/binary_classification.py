@@ -8,7 +8,7 @@ all four measurements (sepal length/width, petal length/width).
 
 Architecture
 ------------
-Linear(4,3) → ReLU → Linear(3,3) — **24 trainable parameters** (96 bytes).
+Linear(4,3) → Linear(3,3) — **27 trainable parameters** (108 bytes).
 Targets are one-hot encoded; predictions use argmax.
 """
 
@@ -20,8 +20,6 @@ import torch.optim as optim
 from sklearn.datasets import load_iris
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
-from optiml.losses import MulitClassHingeLoss
-
 import optiml
 
 SEED = 42
@@ -47,7 +45,7 @@ def evaluate(model, X_t, y_t):
 def train_pytorch(X_tr, y_tr_onehot, seed):
     """Train with Adam + early stopping on training loss."""
     torch.manual_seed(seed)
-    model = nn.Sequential(nn.Linear(4, 3), nn.ReLU(), nn.Linear(3, 3))
+    model = nn.Sequential(nn.Linear(4, 3), nn.Linear(3, 3))
     opt = optim.Adam(model.parameters(), lr=GD_LR)
     criterion = nn.MSELoss(reduction='sum')
 
@@ -106,8 +104,8 @@ def main():
     print("  Edge AI: Iris flower micro-classifier")
     print(f"  Features: {', '.join(iris.feature_names)}")
     print(f"  Classes:  {', '.join(species)}")
-    print("  Architecture: Linear(4,3) → ReLU → Linear(3,3)")
-    print(f"  Params: 24  |  Train: {n_train}  |  Test: {len(X_test)}")
+    print("  Architecture: Linear(4,3) → Linear(3,3)")
+    print(f"  Params: 27  |  Train: {n_train}  |  Test: {len(X_test)}")
     print("=" * 62)
 
     # ── Round 1: PyTorch + Adam + early stopping ──────────────────────
@@ -136,14 +134,13 @@ def main():
 
     model = optiml.Sequential(
         optiml.Linear(4, 3),
-        optiml.ReLU(M=5),
         optiml.Linear(3, 3),
     )
 
     t0 = time.time()
     model.fit(
         X_train, y_train_oh,
-        loss=MulitClassHingeLoss(reduction='sum'),
+        loss=optiml.losses.MSELoss(reduction='sum'),
         solver='gurobi',
         weight_bounds=WEIGHT_BOUNDS,
         tee=False,
@@ -180,7 +177,7 @@ def main():
 
     print(f"\n  OptiML finds the mathematically optimal weights"
           f" in {solve_time:.1f}s.")
-    print(f"\n  Model size: 24 parameters = 96 bytes (float32)")
+    print(f"\n  Model size: 27 parameters = 108 bytes (float32)")
     print(f"  Ready for deployment on any microcontroller.\n")
 
 
