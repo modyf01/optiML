@@ -62,7 +62,7 @@ class MulitClassHingeLoss(Loss):
                 if i == idx:
                     continue
 
-                total += self.relu(1 - pred[i] + real_pred, solver_model)
+                total += self.relu(1 + pred[i] - real_pred, solver_model)
 
         if self.reduction == 'mean':
             return total / len(predictions)
