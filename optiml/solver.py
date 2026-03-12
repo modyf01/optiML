@@ -167,6 +167,7 @@ class SolverModel:
                         options=wls_opts,
                     )
                     solver.options['NonConvex'] = 2
+                    solver.options['MIPFocus'] = 3
                     if time_limit is not None:
                         solver.options['TimeLimit'] = time_limit
                     if node_limit is not None:
@@ -189,6 +190,7 @@ class SolverModel:
 
             solver = pyo.SolverFactory(solver_name)
             solver.options['NonConvex'] = 2
+            solver.options['MIPFocus'] = 3
             if time_limit is not None:
                 solver.options['TimeLimit'] = time_limit
             if node_limit is not None:
