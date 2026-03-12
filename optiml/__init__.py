@@ -1,6 +1,6 @@
 """OptiML — train neural networks via global mathematical optimisation."""
 
-__version__ = "0.1.0"
+__version__ = "1.0.12"
 
 from .layers import (
     OptiModule,
