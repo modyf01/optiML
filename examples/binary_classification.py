@@ -9,7 +9,7 @@ all four measurements (sepal length/width, petal length/width).
 Architecture
 ------------
 Linear(4,3) → PolyReLU → Linear(3,3) — **27 trainable parameters** (108 bytes).
-Activation: polynomial approximation of ReLU (-0.0033x⁴ + 0.1639x² + 0.5x + 0.293).
+Activation: quadratic (strictly convex) approximation of ReLU (0.0937x² + 0.5x + 0.469).
 Targets are one-hot encoded; predictions use argmax.
 Inputs scaled with MinMaxScaler to [0, 1].
 """
@@ -26,7 +26,7 @@ import optiml
 
 SEED = 42
 TRAIN_SIZE = 0.7
-WEIGHT_BOUNDS = (-5, 5)
+WEIGHT_BOUNDS = (-1, 1)
 
 GD_RESTARTS = 10
 GD_MAX_EPOCHS = 5000
@@ -45,9 +45,9 @@ def evaluate(model, X_t, y_t):
 
 
 class PolyReLUModule(nn.Module):
-    """Same polynomial activation used in OptiML, for fair comparison."""
+    """Kwadratowe (ściśle wypukłe) przybliżenie aktywacji."""
     def forward(self, x):
-        return -0.0033 * x ** 4 + 0.1639 * x ** 2 + 0.5 * x + 0.293
+        return 0.0937 * x ** 2 + 0.5 * x + 0.469
 
 
 def train_pytorch(X_tr, y_tr_onehot, seed):
@@ -152,7 +152,7 @@ def main():
         loss=optiml.losses.MSELoss(reduction='sum'),
         solver='gurobi',
         weight_bounds=WEIGHT_BOUNDS,
-        tee=False,
+        tee=True,
     )
     solve_time = time.time() - t0
 

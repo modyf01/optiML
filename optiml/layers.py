@@ -100,41 +100,35 @@ class ReLU(OptiModule):
 
 
 class PolyReLU(OptiModule):
-    """Smooth polynomial approximation of ReLU.
+    """Quadratic (strictly convex) approximation of ReLU.
 
-    f(x) = -0.0033x⁴ + 0.1639x² + 0.5x + 0.293
+    f(x) = 0.0937x² + 0.5x + 0.469
 
-    Uses auxiliary variables (u = x², v = u²) so every constraint
-    stays quadratic — compatible with Gurobi ``NonConvex=2``.
-    No binary variables, no big-M.
+    All constraints are quadratic — compatible with Gurobi ``NonConvex=2``.
+    No binary variables, no big-M, no auxiliary variables.
 
     Best with scaled inputs (e.g. MinMaxScaler to [0, 1]).
     """
 
-    _COEFFS = (-0.0033, 0.1639, 0.5, 0.293)
+    _COEFFS = (0.0937, 0.5, 0.469)
 
     def forward(self, x, solver_model):
         shape = x.shape if hasattr(x, 'shape') else (1,)
-        a4, a2, a1, a0 = self._COEFFS
+        a2, a1, a0 = self._COEFFS
 
-        u = solver_model.create_variable(shape=shape)
-        v = solver_model.create_variable(shape=shape)
         y = solver_model.create_variable(shape=shape)
-
-        solver_model.add_constraint(u == x * x)
-        solver_model.add_constraint(v == u * u)
-        solver_model.add_constraint(y == a4 * v + a2 * u + a1 * x + a0)
+        solver_model.add_constraint(y == a2 * (x * x) + a1 * x + a0)
 
         return y
 
     def to_pytorch(self):
         import torch.nn as nn
 
-        a4, a2, a1, a0 = self._COEFFS
+        a2, a1, a0 = self._COEFFS
 
         class _PolyReLU(nn.Module):
             def forward(self, x):
-                return a4 * x ** 4 + a2 * x ** 2 + a1 * x + a0
+                return a2 * x ** 2 + a1 * x + a0
 
         return _PolyReLU()
 
