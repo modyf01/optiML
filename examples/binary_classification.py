@@ -8,10 +8,14 @@ all four measurements (sepal length/width, petal length/width).
 
 Architecture
 ------------
-Linear(4,3) → PolyReLU → Linear(3,3) — **27 trainable parameters** (108 bytes).
-Activation: quadratic (strictly convex) approximation of ReLU (0.0937x² + 0.5x + 0.469).
+Two-layer ReLU network: Linear → ReLU → Linear.
 Targets are one-hot encoded; predictions use argmax.
 Inputs scaled with MinMaxScaler to [0, 1].
+
+PyTorch:  fixed 3-neuron hidden layer, trained with Adam (local search).
+OptiML:   convex reformulation (Pilanci & Ergen, ICML 2020) — guaranteed
+          global optimum via SOCP. Actual ReLU, no big-M, no binary
+          variables, no polynomial approximation.
 """
 
 import time
@@ -26,13 +30,15 @@ import optiml
 
 SEED = 42
 TRAIN_SIZE = 0.7
-WEIGHT_BOUNDS = (-1, 1)
 
 GD_RESTARTS = 10
 GD_MAX_EPOCHS = 5000
 GD_LR = 0.02
 GD_PATIENCE = 50
 GD_MIN_DELTA = 1e-6
+
+BETA = 0.001
+N_PATTERNS = 200
 
 
 def evaluate(model, X_t, y_t):
@@ -44,16 +50,10 @@ def evaluate(model, X_t, y_t):
         return (preds == y_t).float().mean().item() * 100
 
 
-class PolyReLUModule(nn.Module):
-    """Kwadratowe (ściśle wypukłe) przybliżenie aktywacji."""
-    def forward(self, x):
-        return 0.0937 * x ** 2 + 0.5 * x + 0.469
-
-
 def train_pytorch(X_tr, y_tr_onehot, seed):
     """Train with Adam + early stopping on training loss."""
     torch.manual_seed(seed)
-    model = nn.Sequential(nn.Linear(4, 3), PolyReLUModule(), nn.Linear(3, 3))
+    model = nn.Sequential(nn.Linear(4, 3), nn.ReLU(), nn.Linear(3, 3))
     opt = optim.Adam(model.parameters(), lr=GD_LR)
     criterion = nn.MSELoss(reduction='sum')
 
@@ -87,9 +87,9 @@ def train_pytorch(X_tr, y_tr_onehot, seed):
 def main():
     # ── Data: full Iris dataset ───────────────────────────────────────
     iris = load_iris()
-    X_raw = iris.data                                       # (150, 4)
-    y_int = iris.target                                     # 0, 1, 2
-    y_onehot = np.eye(3)[y_int]                             # (150, 3)
+    X_raw = iris.data
+    y_int = iris.target
+    y_onehot = np.eye(3)[y_int]
 
     scaler = MinMaxScaler().fit(X_raw)
     X_scaled = scaler.transform(X_raw)
@@ -112,13 +112,14 @@ def main():
     print("  Edge AI: Iris flower micro-classifier")
     print(f"  Features: {', '.join(iris.feature_names)}")
     print(f"  Classes:  {', '.join(species)}")
-    print("  Architecture: Linear(4,3) → PolyReLU → Linear(3,3)")
-    print(f"  Params: 27  |  Train: {n_train}  |  Test: {len(X_test)}")
+    print("  Activation: ReLU (exact)")
+    print(f"  Train: {n_train}  |  Test: {len(X_test)}")
     print("=" * 62)
 
     # ── Round 1: PyTorch + Adam + early stopping ──────────────────────
     print(f"\n[Round 1] PyTorch Adam — {GD_RESTARTS} random restarts"
-          f" (early stopping, patience={GD_PATIENCE})\n")
+          f" (Linear(4,3) → ReLU → Linear(3,3), "
+          f"patience={GD_PATIENCE})\n")
 
     t0 = time.time()
     gd_results = []
@@ -137,30 +138,29 @@ def main():
 
     print(f"\n  Total GD time: {gd_time:.1f}s")
 
-    # ── Round 2: OptiML (global optimum) ──────────────────────────────
-    print(f"\n[Round 2] OptiML — MINLP global optimisation (gurobi)\n")
+    # ── Round 2: OptiML Convex SOCP (global optimum) ──────────────────
+    print(f"\n[Round 2] OptiML ConvexReLUNet — "
+          f"convex SOCP (β={BETA}, {N_PATTERNS} patterns)\n")
 
-    model = optiml.Sequential(
-        optiml.Linear(4, 3),
-        optiml.PolyReLU(),
-        optiml.Linear(3, 3),
+    convex_net = optiml.ConvexReLUNet(
+        in_features=4, out_features=3, n_patterns=N_PATTERNS,
     )
 
     t0 = time.time()
-    model.fit(
-        X_train, y_train_oh,
-        loss=optiml.losses.MSELoss(reduction='sum'),
-        solver='gurobi',
-        weight_bounds=WEIGHT_BOUNDS,
-        tee=True,
-    )
+    convex_net.fit(X_train, y_train_oh, beta=BETA, tee=False)
     solve_time = time.time() - t0
 
-    optiml_pt = model.export('pytorch')
-    optiml_sse = model.objective_value
+    optiml_pt = convex_net.export('pytorch')
+    n_hidden = optiml_pt[0].out_features
+    n_params = sum(p.numel() for p in optiml_pt.parameters())
+
+    criterion = nn.MSELoss(reduction='sum')
+    with torch.no_grad():
+        optiml_sse = criterion(optiml_pt(X_tr_t), y_tr_t).item()
     optiml_mse = optiml_sse / n_train
     optiml_acc = evaluate(optiml_pt, X_te_t, y_te_t)
 
+    print(f"\n  Hidden neurons: {n_hidden}  |  Params: {n_params}")
     print(f"  MSE = {optiml_mse:.6f}  (SSE = {optiml_sse:.6f})")
     print(f"  Solved in {solve_time:.1f}s")
 
@@ -174,7 +174,7 @@ def main():
     print("=" * 62)
     print(f"  {'Method':<30} {'Train MSE':>10} {'Test Acc':>10}")
     print(f"  {'-'*30} {'-'*10} {'-'*10}")
-    print(f"  {'OptiML (guaranteed)':<30}"
+    print(f"  {'OptiML convex (global opt.)':<30}"
           f" {optiml_mse:>10.4f} {optiml_acc:>9.1f}%")
     print(f"  {'GD best of ' + str(GD_RESTARTS):<30}"
           f" {best_gd_mse:>10.4f} {gd_accs[best_idx]:>9.1f}%")
@@ -184,10 +184,13 @@ def main():
           f" {first_gd_mse:>10.4f} {gd_accs[0]:>9.1f}%")
     print("=" * 62)
 
-    print(f"\n  OptiML finds the mathematically optimal weights"
-          f" in {solve_time:.1f}s.")
-    print(f"\n  Model size: 27 parameters = 108 bytes (float32)")
-    print(f"  Ready for deployment on any microcontroller.\n")
+    print(f"\n  OptiML convex SOCP: guaranteed globally optimal "
+          f"two-layer ReLU network")
+    print(f"  {n_hidden} hidden neurons, {n_params} parameters, "
+          f"solved in {solve_time:.1f}s.")
+    print(f"  Architecture: Linear(4,{n_hidden}) → ReLU → "
+          f"Linear({n_hidden},3)")
+    print(f"  Ref: Pilanci & Ergen, ICML 2020\n")
 
 
 if __name__ == "__main__":

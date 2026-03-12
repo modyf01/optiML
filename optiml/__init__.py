@@ -14,6 +14,7 @@ from .layers import (
 )
 from .model import Sequential
 from .solver import SolverVariable, SolverModel, is_gurobi_wls_configured
+from .convex import ConvexReLUNet
 from . import losses
 
 __all__ = [
@@ -29,5 +30,6 @@ __all__ = [
     "SolverVariable",
     "SolverModel",
     "is_gurobi_wls_configured",
+    "ConvexReLUNet",
     "losses",
 ]
