@@ -8,7 +8,7 @@ all four measurements (sepal length/width, petal length/width).
 
 Architecture
 ------------
-Linear(4,3) → Linear(3,3) — **27 trainable parameters** (108 bytes).
+Linear(4,3) → ReLU → Linear(3,3) — **27 trainable parameters** (108 bytes).
 Targets are one-hot encoded; predictions use argmax.
 """
 
@@ -45,7 +45,7 @@ def evaluate(model, X_t, y_t):
 def train_pytorch(X_tr, y_tr_onehot, seed):
     """Train with Adam + early stopping on training loss."""
     torch.manual_seed(seed)
-    model = nn.Sequential(nn.Linear(4, 3), nn.Linear(3, 3))
+    model = nn.Sequential(nn.Linear(4, 3), nn.ReLU(), nn.Linear(3, 3))
     opt = optim.Adam(model.parameters(), lr=GD_LR)
     criterion = nn.MSELoss(reduction='sum')
 
@@ -104,7 +104,7 @@ def main():
     print("  Edge AI: Iris flower micro-classifier")
     print(f"  Features: {', '.join(iris.feature_names)}")
     print(f"  Classes:  {', '.join(species)}")
-    print("  Architecture: Linear(4,3) → Linear(3,3)")
+    print("  Architecture: Linear(4,3) → ReLU → Linear(3,3)")
     print(f"  Params: 27  |  Train: {n_train}  |  Test: {len(X_test)}")
     print("=" * 62)
 
@@ -134,6 +134,7 @@ def main():
 
     model = optiml.Sequential(
         optiml.Linear(4, 3),
+        optiml.ReLU(),
         optiml.Linear(3, 3),
     )
 

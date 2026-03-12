@@ -63,21 +63,35 @@ class Linear(OptiModule):
 
 
 class ReLU(OptiModule):
-    """ReLU activation modelled via big-M with binary variables."""
+    """ReLU activation: y = max(0, x).
 
-    def __init__(self, M=1000):
+    When ``M`` is None (default), uses complementarity formulation
+    ``y*(y-x) == 0`` — no binary variables, no big-M constant.
+    Requires a solver that handles non-convex quadratic constraints
+    (e.g. Gurobi with ``NonConvex=2``).
+
+    When ``M`` is given, falls back to the classical big-M formulation
+    with binary indicator variables (works with any MINLP solver).
+    """
+
+    def __init__(self, M=None):
         super().__init__()
         self.M = M
 
     def forward(self, x, solver_model):
         shape = x.shape if hasattr(x, 'shape') else (1,)
         y = solver_model.create_variable(shape=shape)
-        z = solver_model.create_variable(shape=shape, boolean=True)
 
         solver_model.add_constraint(y >= 0)
         solver_model.add_constraint(y >= x)
-        solver_model.add_constraint(y <= x + self.M * (1 - z))
-        solver_model.add_constraint(y <= self.M * z)
+
+        if self.M is not None:
+            z = solver_model.create_variable(shape=shape, boolean=True)
+            solver_model.add_constraint(y <= x + self.M * (1 - z))
+            solver_model.add_constraint(y <= self.M * z)
+        else:
+            solver_model.add_constraint(y * (y - x) == 0)
+
         return y
 
     def to_pytorch(self):
