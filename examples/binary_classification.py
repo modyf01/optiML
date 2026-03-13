@@ -13,9 +13,10 @@ Targets are one-hot encoded; predictions use argmax.
 Inputs scaled with MinMaxScaler to [0, 1].
 
 PyTorch:  fixed 3-neuron hidden layer, trained with Adam (local search).
-OptiML:   convex reformulation (Pilanci & Ergen, ICML 2020) — guaranteed
-          global optimum via SOCP. Actual ReLU, no big-M, no binary
-          variables, no polynomial approximation.
+OptiML:   convex reformulation (Pilanci & Ergen, ICML 2020).
+          With exact=True: enumerate ALL sign patterns →
+          single convex SOCP → **certified global optimum** (Theorem 1).
+          No binary variables — the entire problem is convex.
 """
 
 import time
@@ -38,7 +39,7 @@ GD_PATIENCE = 50
 GD_MIN_DELTA = 1e-6
 
 BETA = 0.001
-N_PATTERNS = 200
+N_PATTERNS = 50
 
 
 def evaluate(model, X_t, y_t):
@@ -138,16 +139,17 @@ def main():
 
     print(f"\n  Total GD time: {gd_time:.1f}s")
 
-    # ── Round 2: OptiML Convex SOCP (global optimum) ──────────────────
+    # ── Round 2: OptiML Convex SOCP (certified global optimum) ────────
     print(f"\n[Round 2] OptiML ConvexReLUNet — "
-          f"convex SOCP (β={BETA}, {N_PATTERNS} patterns)\n")
+          f"exact (all patterns, pure convex SOCP, β={BETA})\n")
 
     convex_net = optiml.ConvexReLUNet(
         in_features=4, out_features=3, n_patterns=N_PATTERNS,
     )
 
     t0 = time.time()
-    convex_net.fit(X_train, y_train_oh, beta=BETA, tee=False)
+    convex_net.fit(X_train, y_train_oh, beta=BETA, tee=False,
+                   exact=True)
     solve_time = time.time() - t0
 
     optiml_pt = convex_net.export('pytorch')
@@ -160,22 +162,74 @@ def main():
     optiml_mse = optiml_sse / n_train
     optiml_acc = evaluate(optiml_pt, X_te_t, y_te_t)
 
+    cert_tag = "CERTIFIED" if convex_net.certified else "upper bound"
     print(f"\n  Hidden neurons: {n_hidden}  |  Params: {n_params}")
     print(f"  MSE = {optiml_mse:.6f}  (SSE = {optiml_sse:.6f})")
+    print(f"  Status: {cert_tag}")
     print(f"  Solved in {solve_time:.1f}s")
+
+    # ── Round 3: OptiML Deep (3-layer, 2 hidden) ─────────────────────
+    print(f"\n[Round 3] OptiML DeepConvexReLUNet — "
+          f"3-layer SOCP (width=3, P=5, β={BETA})\n")
+
+    deep_net = optiml.DeepConvexReLUNet(
+        in_features=4, out_features=3, hidden_layers=2,
+        width=3, n_patterns=5,
+    )
+
+    t0 = time.time()
+    deep_net.fit(X_train, y_train_oh, beta=BETA, tee=False)
+    deep_time = time.time() - t0
+
+    raw_preds = deep_net.predict_convex(X_train)
+    raw_train_acc = (raw_preds.argmax(1) == y_train_oh.argmax(1)
+                     ).mean() * 100
+
+    raw_test = deep_net.predict_convex(X_test)
+    raw_test_acc = (raw_test.argmax(1) == y_test_int).mean() * 100
+
+    deep_pt = deep_net.export('pytorch')
+    deep_pt.eval()
+
+    with torch.no_grad():
+        pt_preds = deep_pt(X_tr_t).numpy()
+        pt_test_preds = deep_pt(X_te_t).numpy()
+
+    pt_train_acc = (pt_preds.argmax(1) == y_train_oh.argmax(1)
+                    ).mean() * 100
+    deep_acc = (pt_test_preds.argmax(1) == y_test_int).mean() * 100
+
+    diff_train = np.abs(raw_preds - pt_preds).max()
+    diff_test = np.abs(raw_test - pt_test_preds).max()
+
+    print(f"  Obj = {deep_net.objective_value:.6f}")
+    print(f"  Raw convex  train acc: {raw_train_acc:.1f}%  "
+          f"test acc: {raw_test_acc:.1f}%")
+    print(f"  PT export   train acc: {pt_train_acc:.1f}%  "
+          f"test acc: {deep_acc:.1f}%")
+    print(f"  max|diff| train={diff_train:.4f}  "
+          f"test={diff_test:.4f}")
+    print(f"  Solved in {deep_time:.1f}s")
 
     # ── Results ───────────────────────────────────────────────────────
     best_gd_mse = gd_losses[best_idx] / n_train
     median_gd_mse = np.median(gd_losses) / n_train
     first_gd_mse = gd_losses[0] / n_train
 
+    with torch.no_grad():
+        deep_sse = criterion(deep_pt(X_tr_t), y_tr_t).item()
+    deep_mse = deep_sse / n_train
+
     print("\n" + "=" * 62)
     print(f"  RESULTS — test accuracy on {len(X_test)} unseen iris samples")
     print("=" * 62)
     print(f"  {'Method':<30} {'Train MSE':>10} {'Test Acc':>10}")
     print(f"  {'-'*30} {'-'*10} {'-'*10}")
-    print(f"  {'OptiML convex (global opt.)':<30}"
+    cert2 = "GLOBAL OPT" if convex_net.certified else "UB"
+    print(f"  {f'OptiML 2-layer ({cert2})':<30}"
           f" {optiml_mse:>10.4f} {optiml_acc:>9.1f}%")
+    print(f"  {'OptiML 3-layer (UB)':<30}"
+          f" {deep_mse:>10.4f} {deep_acc:>9.1f}%")
     print(f"  {'GD best of ' + str(GD_RESTARTS):<30}"
           f" {best_gd_mse:>10.4f} {gd_accs[best_idx]:>9.1f}%")
     print(f"  {'GD median':<30}"
@@ -184,13 +238,17 @@ def main():
           f" {first_gd_mse:>10.4f} {gd_accs[0]:>9.1f}%")
     print("=" * 62)
 
-    print(f"\n  OptiML convex SOCP: guaranteed globally optimal "
-          f"two-layer ReLU network")
-    print(f"  {n_hidden} hidden neurons, {n_params} parameters, "
+    if convex_net.certified:
+        print(f"\n  OptiML 2-layer: CERTIFIED GLOBAL OPTIMUM "
+              f"(all patterns enumerated, pure convex SOCP)")
+    else:
+        print(f"\n  OptiML 2-layer: upper bound on the global "
+              f"optimum of ReLU training (sampled patterns)")
+    print(f"  2-layer: {n_hidden} hidden neurons, {n_params} params, "
           f"solved in {solve_time:.1f}s.")
-    print(f"  Architecture: Linear(4,{n_hidden}) → ReLU → "
-          f"Linear({n_hidden},3)")
-    print(f"  Ref: Pilanci & Ergen, ICML 2020\n")
+    print(f"  3-layer: solved in {deep_time:.1f}s (upper bound).")
+    print(f"  Ref: Pilanci & Ergen ICML 2020 / "
+          f"Ergen & Pilanci ICML 2021\n")
 
 
 if __name__ == "__main__":

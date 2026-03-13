@@ -1,6 +1,6 @@
 """OptiML — train neural networks via global mathematical optimisation."""
 
-__version__ = "1.0.12"
+__version__ = "1.0.13"
 
 from .layers import (
     OptiModule,
@@ -14,7 +14,13 @@ from .layers import (
 )
 from .model import Sequential
 from .solver import SolverVariable, SolverModel, is_gurobi_wls_configured
-from .convex import ConvexReLUNet
+
+try:
+    from .convex import ConvexReLUNet, DeepConvexReLUNet
+except ImportError:
+    ConvexReLUNet = None
+    DeepConvexReLUNet = None
+
 from . import losses
 
 __all__ = [
@@ -31,5 +37,6 @@ __all__ = [
     "SolverModel",
     "is_gurobi_wls_configured",
     "ConvexReLUNet",
+    "DeepConvexReLUNet",
     "losses",
 ]
